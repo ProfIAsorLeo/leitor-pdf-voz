@@ -248,10 +248,27 @@ let voices   = [];
 function loadVoices(){ voices = synth ? synth.getVoices() : []; }
 loadVoices();
 if (synth && 'onvoiceschanged' in synth) synth.onvoiceschanged = loadVoices;
+
+/* Seleciona a melhor voz disponível:
+   1. Google pt-BR (neural, melhor gratuita no Android/Chrome)
+   2. Microsoft Francisco/Maria/Francisca (melhor no Windows)
+   3. Qualquer voz local pt-BR (offline = geralmente mais fluida)
+   4. Qualquer pt-BR, depois qualquer pt */
 function bestVoice(){
-  return voices.find(v => v.lang === 'pt-BR')
-      || voices.find(v => v.lang.startsWith('pt'))
-      || voices[0] || null;
+  const ptBR = voices.filter(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
+  const pt   = voices.filter(v => v.lang.startsWith('pt'));
+  const g = ptBR.find(v => v.name.toLowerCase().includes('google'));
+  if(g) return g;
+  const ms = ptBR.find(v => v.name.toLowerCase().includes('microsoft')
+    || v.name.includes('Francisco') || v.name.includes('Francisca') || v.name.includes('Maria'));
+  if(ms) return ms;
+  const loc = ptBR.find(v => v.localService);
+  if(loc) return loc;
+  if(ptBR.length) return ptBR[0];
+  const lpt = pt.find(v => v.localService);
+  if(lpt) return lpt;
+  if(pt.length) return pt[0];
+  return voices[0] || null;
 }
 
 /* ── CALCULA ALTURA DO PLAYER e aplica padding no conteúdo ── */
@@ -427,7 +444,10 @@ function speakAt(i){
   highlight(i); idx = i; updateUI();
   const text = sentences[i].text;
   const u    = new SpeechSynthesisUtterance(text);
-  u.rate     = speed; u.lang = 'pt-BR';
+  u.rate     = speed;
+  u.lang     = 'pt-BR';
+  u.pitch    = 1.05;   // levemente mais alto — soa menos robótico
+  u.volume   = 1;
   const v = bestVoice(); if(v) u.voice = v;
   const wc = text.split(/\s+/).length;
   const estMs = Math.max(2500, (wc/130)*60000/speed + 2000);
