@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Leitor PDF Voz</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#00e5a0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PDF Voz">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap');
@@ -441,8 +446,8 @@ function speakAt(i){
     playing = false; $('playbtn').textContent = '▶'; idx = 0; updateUI(); return;
   }
   const myGen = generation;
-  highlight(i); idx = i; updateUI();
-  const text = sentences[i].text;
+  highlight(i); idx = i; updateUI(); updateMediaSession();
+  const text = cleanForSpeech(sentences[i].text);
   const u    = new SpeechSynthesisUtterance(text);
   u.rate     = speed;
   u.lang     = 'pt-BR';
@@ -560,8 +565,58 @@ async function handleFile(file){
   }
 }
 
+/* ── PRÉ-PROCESSAMENTO DE TEXTO PARA VOZ ────────────────────────────
+   Converte formatos que o TTS lê errado em texto natural falado.
+   Ex: "R$2.040,76" → "2040 reais" | "%" → "por cento" | siglas etc.
+──────────────────────────────────────────────────────────────────── */
+function cleanForSpeech(text){
+  return text
+    // Valores em reais
+    .replace(/R\$\s*([\d.,]+)/g, (_, v) => v.replace(/\./g,'').replace(',','.') + ' reais')
+    // Porcentagem
+    .replace(/(\d+)\s*%/g, '$1 por cento')
+    // Datas tipo 25/11/2018
+    .replace(/(\d{1,2})\/(\d{1,2})\/(\d{4})/g, '$1 de $2 de $3')
+    // Siglas com pontos: U.S.A. → USA
+    .replace(/([A-Z])\.([A-Z])\./g, '$1$2')
+    // Números com ponto de milhar: 1.000 → 1000
+    .replace(/(\d)\.(\d{3})/g, '$1$2')
+    // Ordinal: 1º → primeiro  2ª → segunda
+    .replace(/1[oº]/g,'primeiro').replace(/2[oº]/g,'segundo')
+    .replace(/3[oº]/g,'terceiro').replace(/1[aª]/g,'primeira')
+    .replace(/2[aª]/g,'segunda').replace(/3[aª]/g,'terceira')
+    // Remove caracteres que confundem o TTS
+    .replace(/[_*#@]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* ── MEDIA SESSION — controles na tela de bloqueio ─────────────────
+   Mostra botões de play/pause/anterior/próximo na tela bloqueada,
+   igual ao Spotify. Funciona quando instalado como PWA.
+──────────────────────────────────────────────────────────────────── */
+function updateMediaSession(){
+  if(!('mediaSession' in navigator)) return;
+  const s = sentences[idx];
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: $('fname').textContent || 'PDF Voz',
+    artist: s ? `Página ${s.page} · Frase ${idx+1} de ${sentences.length}` : '',
+    album: 'Leitor PDF Voz'
+  });
+  navigator.mediaSession.setActionHandler('play',         () => { play(); });
+  navigator.mediaSession.setActionHandler('pause',        () => { pause(); });
+  navigator.mediaSession.setActionHandler('previoustrack',() => { jumpTo(idx-1); });
+  navigator.mediaSession.setActionHandler('nexttrack',    () => { jumpTo(idx+1); });
+}
+
+/* ── SERVICE WORKER — habilita PWA e background audio ── */
 window.addEventListener('resize', applyPlayerPadding);
 setInterval(() => { if(playing && synth.paused) synth.resume(); }, 5000);
+
+// Registra Service Worker (PWA + background audio)
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
 </script>
 </body>
 </html>
